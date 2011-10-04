@@ -2,7 +2,7 @@
 Function:      LocalStorageDB()
 Author:        Aaron Gustafson (aaron at easy-designs dot net)
 Creation Date: 2011-10-03
-Version:       0.1
+Version:       1.0
 Homepage:      http://github.com/easy-designs/LocalStorageDB.js
 License:       MIT License (see homepage)
 ------------------------------------------------------------------------------*/
@@ -18,8 +18,7 @@ License:       MIT License (see homepage)
 	 */
 	function LocalStorageDB( name )
 	{
-		this.version = '0.1';
-		
+
 		var
 		UNDEFINED,
 		WINDOW	= window,
@@ -31,11 +30,16 @@ License:       MIT License (see homepage)
 		encode	= JSON.stringify,
 		decode	= JSON.parse,
 		
-		db		= {};
+		// DB innards
+		DB				= {},
+		AFFECTED_ROWS	= 0;
 
 
-		// Private Methods
-		function load()
+		/**
+		 * init() -> undefined
+		 * Initializes the DB and loads its contents in to memory
+		 */
+		function init()
 		{
 			var
 			tables	= readFromCache( TABLES ),
@@ -43,42 +47,54 @@ License:       MIT License (see homepage)
 			if ( t )
 			{
 				// store for easier access
-				db[TABLES] = tables;
+				DB[TABLES] = tables;
 				// loop and load
 				while ( t-- )
 				{
-					db[ tables[t] ] = readFromCache( tables[t] );
+					DB[ tables[t] ] = readFromCache( tables[t] );
 				}
 			}
 			else
 			{
-				db[TABLES] = [];
+				DB[TABLES] = [];
 				cache( TABLES );
 			}
 		}
+		/**
+		 * tableExists( table ) -> boolean
+		 * Verifies the existence of a table
+		 * 
+		 * @param str table - the table
+		 */
 		function tableExists( table )
 		{
-			if ( TABLES in db )
+			if ( TABLES in DB )
 			{
 				var
-				tables	= db[TABLES],
+				tables	= DB[TABLES],
 				t		= tables.length;
 				while ( t-- )
 				{
 					if ( table == tables[t] )
 					{
-						throw new Error( table + ' already exists in DB ' + name );
 						return true;
 					}
 				}
 			}
 			return false;
 		}
-		function insert( table, data )
+		/**
+		 * insertData( table, data ) -> undefined
+		 * Inserts data in to the table, ensuring it matches the definition
+		 * 
+		 * @param str table - the table
+		 * @param object data - the object to be inserted
+		 */
+		function insertData( table, data )
 		{
 			var
-			t	= db[table],
-			p	= t.proto,
+			t	= DB[table],
+			p	= t.dfn,
 			i	= t.index++,
 			d	= {},
 			k;
@@ -90,8 +106,16 @@ License:       MIT License (see homepage)
 					d[k] = ( k == 'id' ) ? i : ( data[k] || p[k] );
 				}
 			}
-			db[table].data.push( d );
+			DB[table].data.push( d );
+			AFFECTED_ROWS++;
 		}
+		/**
+		 * findMatches( d, c ) -> array
+		 * Finds items within the data set that match the supplied criteria
+		 * 
+		 * @param array d - the data set
+		 * @param object c - the criteria to be matched
+		 */
 		function findMatches( d, c )
 		{
 			var
@@ -113,6 +137,14 @@ License:       MIT License (see homepage)
 			}
 			return a.reverse();
 		}
+		/**
+		 * withMatches( d, c, f ) -> undefined
+		 * Iterates data and performs a function based on items that match the supplied criteria
+		 * 
+		 * @param array d - the data set
+		 * @param object c - the criteria to be matched
+		 * @param function f - the callback to be executed
+		 */
 		function withMatches( d, c, f )
 		{
 			var
@@ -132,20 +164,20 @@ License:       MIT License (see homepage)
 				// trigger the callback, supplying the index
 				f( i );
 			}
-			return true;
 		}
+		/**
+		 * cache( table ) -> boolean
+		 * Caches the supplied table name
+		 */
 		function cache( table )
 		{
-			writeToCache( table, db[table] );
+			return writeToCache( table, DB[table] );
 		}
-		function argTest( required, provided, message )
-		{
-			if ( provided < required )
-			{
-				throw new Error( message );
-			}
-		}
-		// storage
+		
+		
+		// ------------------------
+		// STORAGE MECHANICS
+		// ------------------------
 		function readFromCache( table )
 		{
 			table = PREFIX + name + HYPHEN + table;
@@ -165,159 +197,301 @@ License:       MIT License (see homepage)
 			__cache.removeItem( table );
 			return true;
 		}
-
-		/**
-		* LocalStorageDB.truncate() -> boolean
-		* Empties the DB
-		*
-		* Option 1: Empties the entire DB
-		*   LocalStorageDB.truncate()
-		*
-		* Option 2: Empties a table
-		*   LocalStorageDB.truncate( table )
-		*   @param str table - the table you'd like to empty
-		*/
-		this.truncate = function()
-		{
-			var
-			table	= false,
-			args	= arguments;
-			if ( args.length == 1 )
-			{
-				table = SUB + args[0];
-			}
-			return removeFromCache( table );
-		};
-
-		/**
-		* LocalStorageDB.selectRows( table, criteria ) -> array
-		* Selects rows from a given table based on the supplied criteria
-		*
-		* Option 1: Select the entire DB table
-		*   LocalStorageDB.selectRows( table )
-		*   @param str table - the table to read
-		*
-		* Option 2: Select based on criteria
-		*   LocalStorageDB.selectRows( table, criteria )
-		*   @param str table - the table to read
-		*   @param obj criteria - the criteria to match
-		*/
-		this.selectRows = function( table, criteria )
-		{
-			return findMatches( db[table].data, criteria );
-		};
-
-		/**
-		* LocalStorageDB.insertRows( table, data ) -> boolean
-		* Adds data to the table
-		*
-		* Option 1: Add a row
-		*   LocalStorageDB.insertRows( table, data )
-		*   @param str table - the table to use
-		*   @param obj data - the data object to insert
-		*/
-		this.insertRows = function( table, data )
-		{
-			if ( data instanceof Array )
-			{
-				for ( var i=0, len = data.length; i < len; i++ )
-				{
-					if ( data[i] instanceof Object ) 
-					{
-						insert( table, data[i] );
-					}
-				}
-			}
-			else if ( data instanceof Object )
-			{
-				insert( table, data );
-			}
-			else
-			{
-				throw new Error( 'LocalStorageDB.insert() expects an Object or an array of Objects to be inserted as data' );
-			}
-			cache( table );
-			return true;
-		};
-		
 		
 		/**
-		* LocalStorageDB.createTable( table, proto, data ) -> boolean
-		* Creates a new table and (optionally) in serts data into it
-		*
-		* Option 1: Create a table
-		*   LocalStorageDB.createTable( table, proto )
-		*   @param str table - the table name
-		*   @param obj proto - the data object to use as a prototype for all rows
-		* 
-		* Option 2: Create a table and prefill it with data
-		*   LocalStorageDB.createTable( table, proto, data )
-		*   @param str table - the table name
-		*   @param obj proto - the data object to use as a prototype for all rows
-		*   @param array data - the data you want to prefill the table with
-		*/
-		this.createTable = function( table, proto, data )
+		 * LocalStorageDB.AFFECTED_ROWS() -> number
+		 * The number of rows affected by the last operation
+		 */
+		this.AFFECTED_ROWS = function()
 		{
-			if ( ! proto ||
+			return AFFECTED_ROWS;
+		};
+		
+		/**
+		 * LocalStorageDB.CREATE( table, proto, data ) -> boolean
+		 * Creates a new table and (optionally) in serts data into it
+		 *
+		 * Option 1: Create a table
+		 *   LocalStorageDB.CREATE( table, proto )
+		 *   @param str table - the table name
+		 *   @param obj dfn - the data object to use as a definition for all rows
+		 * 
+		 * Option 2: Create a table and prefill it with data
+		 *   LocalStorageDB.CREATE( table, proto, data )
+		 *   @param str table - the table name
+		 *   @param obj dfn - the data object to use as a definition for all rows
+		 *   @param array data - the data you want to prefill the table with
+		 */
+		this.CREATE = function( table, dfn, data )
+		{
+			if ( ! dfn ||
 				 tableExists( table ) )
 			{
+				throw new Error( table + ' already exists' );
 				return false;
 			}
 
 			// set up the table
-			db[table]		= {};
-			db[table].data	= [];
-			db[table].proto	= proto;
-			db[table].index	= 0;
+			DB[table]		= {};
+			DB[table].data	= [];
+			DB[table].dfn	= dfn;
+			DB[table].index	= 0;
 
-			// inser the data (if asked)
+			// insert the data (if asked)
 			if ( data &&
-				 data instanceof Array )
+				 ( data instanceof Array ||
+				   data instanceof Object ) )
 			{
-				console.log('inserting data');
-				this.insert( table, data );
+				this.INSERT_INTO( table, data );
 			}
 			
 			// cache the table
 			cache( table );
 			// cache the table index
-			db[TABLES].push( table );
+			DB[TABLES].push( table );
 			cache( TABLES );
 			return true;
 		};
 
 		/**
-		* LocalStorageDB.deleteRows() -> boolean
-		* Removes rows matching criteria from table
-		*
-		* Option 1: Remove all rows
-		*   LocalStorageDB.deleteRows( table )
-		*   @param str table - the table to delete all rows from
-		*
-		* Option 2: Remove select rows
-		*   LocalStorageDB.deleteRows( table, criteria )
-		*   @param str table - the table to delete rows from
-		*   @param obj criteria - the criteria to match
-		*/
-		this.deleteRows  = function( table, criteria )
+		 * LocalStorageDB.DESCRIBE( table ) -> object
+		 * Returns the definition object
+		 *
+		 * @param str table - the table name
+		 */
+		this.DESCRIBE = function( table )
 		{
+			if ( tableExists( table ) )
+			{
+				return DB[table].dfn;
+			}
+			else
+			{
+				throw new Error( table + ' is not a valid table name' );
+			}
+		};
+
+		/**
+		 * LocalStorageDB.TRUNCATE() -> undefined
+		 * Empties a table
+		 *
+		 * @param str table - the table you'd like to empty
+		 */
+		this.TRUNCATE = function( table )
+		{
+			AFFECTED_ROWS = 0;
+			if ( !! table )
+			{
+				if ( tableExists( table ) )
+				{
+					AFFECTED_ROWS = DB[table].data.length;
+					DB[table].index	= 0;
+					DB[table].data	= [];
+					cache( table );
+				}
+				else
+				{
+					throw new Error( table + ' is not a valid table name' );
+				}
+			}
+			else
+			{
+				throw new Error( 'truncate rquires a table name' );
+			}
+		};
+
+		/**
+		 * LocalStorageDB.DROP( table ) -> undefined
+		 * Drops a table form the DB
+		 *
+		 * @param str table - the table you'd like to drop
+		 */
+		this.DROP = function( table )
+		{
+			if ( !! table )
+			{
+				if ( tableExists( table ) )
+				{
+					var
+					tables	= DB[TABLES],
+					i		= tables.length;
+					while ( i-- )
+					{
+						if ( tables[i] == table )
+						{
+							DB[TABLES].splice(i,1);
+							break;
+						}
+					}
+					cache( TABLES );
+					removeFromCache( table );
+				}
+				else
+				{
+					throw new Error( table + ' is not a valid table name' );
+				}
+			}
+			else
+			{
+				throw new Error( 'DROP rquires a table name' );
+				
+			}
+		};
+
+		/**
+		 * LocalStorageDB.INSERT( table, data ) -> undefined
+		 * Adds data to the table
+		 *
+		 * Option 1: Add a row
+		 *   LocalStorageDB.INSERT( table, data )
+		 *   @param str table - the table to use
+		 *   @param obj data - the data object to insert
+		 * 
+		 * Option 2: Add rows
+		 *   LocalStorageDB.INSERT( table, data )
+		 *   @param str table - the table to use
+		 *   @param array data - an array of data objects to insert
+
+		 */
+		this.INSERT_INTO = function( table, data )
+		{
+			AFFECTED_ROWS = 0;
+			if ( tableExists( table ) )
+			{
+				if ( data instanceof Array )
+				{
+					for ( var i=0, len = data.length; i < len; i++ )
+					{
+						if ( data[i] instanceof Object ) 
+						{
+							insertData( table, data[i] );
+						}
+					}
+				}
+				else if ( data instanceof Object )
+				{
+					insertData( table, data );
+				}
+				else
+				{
+					throw new Error( 'LocalStorageDB.insert() expects an Object or an array of Objects to be inserted as data' );
+				}
+				cache( table );
+			}	
+			else
+			{
+				throw new Error( table + ' is not a valid table name' );
+			}
+		};
+
+	 	/**
+		 * LocalStorageDB.SELECT( table, criteria ) -> array
+		 * Selects rows from a given table based on the supplied criteria
+		 *
+		 * Option 1: Select the entire DB table
+		 *   LocalStorageDB.SELECT( table )
+		 *   @param str table - the table to read
+		 *
+		 * Option 2: Select based on criteria
+		 *   LocalStorageDB.SELECT( table, criteria )
+		 *   @param str table - the table to read
+		 *   @param obj criteria - the criteria to match
+		 */
+		this.SELECT = function( table, criteria )
+		{
+			if ( tableExists( table ) )
+			{
+				return findMatches( DB[table].data, criteria );
+			}
+			else
+			{
+				throw new Error( table + ' is not a valid table name' );
+			}
+		};
+
+		/**
+		 * LocalStorageDB.UPDATE( table, data, criteria ) -> undefined
+		 * Updates data in the table
+		 *
+		 * Option 1: Update all rows
+		 *   LocalStorageDB.UPDATE( table, data )
+		 *   @param str table - the table to use
+		 *   @param obj data - the data object to use for updating the table
+		 * 
+		 * Option 2: Update select rows
+		 *   LocalStorageDB.UPDATE( table, data, criteria )
+		 *   @param str table - the table to use
+		 *   @param obj data - the data object to use for updating the table
+		 *   @param obj criteria - the criteria to match
+		 */
+		this.UPDATE = function( table, data, criteria )
+		{
+			AFFECTED_ROWS = 0;
+			if ( tableExists( table ) )
+			{
+				if ( data instanceof Object )
+				{
+					withMatches( DB[table].data, criteria, function( i ){
+						var 
+						newData = DB[table].data[i],
+						p;
+						for ( p in data )
+						{
+							if ( data.hasOwnProperty( p ) )
+							{
+								newData[p] = data[p];
+							}
+						}
+						DB[table].data[i] = newData;
+						AFFECTED_ROWS++;
+					});
+				}
+				else
+				{
+					throw new Error( 'LocalStorageDB.insert() expects an Object or an array of Objects to be inserted as data' );
+				}
+				cache( table );
+			}
+			else
+			{
+				throw new Error( table + ' is not a valid table name' );
+			}
+		};
+
+		/**
+		 * LocalStorageDB.DELETE() -> undefined
+		 * Removes rows matching criteria from table
+		 *
+		 * Option 1: Remove all rows
+		 *   LocalStorageDB.DELETE( table )
+		 *   @param str table - the table to delete all rows from
+		 *
+		 * Option 2: Remove select rows
+		 *   LocalStorageDB.DELETE( table, criteria )
+		 *   @param str table - the table to delete rows from
+		 *   @param obj criteria - the criteria to match
+		 */
+		this.DELETE  = function( table, criteria )
+		{
+			AFFECTED_ROWS = 0;
 			if ( criteria == UNDEFINED )
 			{
 				return this.truncate( table );
 			}
 			else
 			{
-				withMatches( db[table].data, criteria, function( i ){
-					db[table].data.splice(i,1);
+				withMatches( DB[table].data, criteria, function( i ){
+					DB[table].data.splice(i,1);
+					AFFECTED_ROWS++;
 				});
 				cache( table );
-				return true;
 			}
 		};
 		
 		
 		
-		load();
+		// load it up!
+		init();
 	}
 }
 
