@@ -32,9 +32,73 @@ License:       MIT License (see homepage)
 		
 		// DB innards
 		DB				= {},
-		AFFECTED_ROWS	= 0;
+		AFFECTED_ROWS	= 0,
+		
+		// The RESULT_SET object inherits from Array
+		RESULT_SET = function(){};
+		RESULT_SET.prototype = Array.prototype;
+		RESULT_SET.prototype.ORDER_BY = function( order )
+		{
+			var
+			arr	= this,
+			l, key, sort;
 
-
+			if ( order == 'RANDOM' )
+			{
+				arr.sort(function(){
+					return 0.5 - Math.random();
+				});
+			}
+			else
+			{
+				// convert order to an array
+				order	= order.split(',');
+				l		= order.length;
+				// loop in reverse order (to keep the specificity correct)
+				while ( l-- )
+				{
+					order[l]	= order[l].trim().split(' ');
+					key			= order[l][0];
+					sort		= order[l][1];
+					arr.sort(function(a,b){
+						var
+						ret = 0;
+						// work on copies
+						a	= clone(a);
+						b	= clone(b);
+						if ( typeof a[key] == 'string' )
+						{
+							a = a[key].toLowerCase();
+							b = b[key].toLowerCase();
+							if ( sort == 'ASC' )
+							{
+								ret = a < b ? -1 : ( a > b ? 1 : 0 );
+							}
+							else
+							{
+								ret = a < b ? 1 : ( a > b ? -1 : 0 );
+							}
+						}
+						if ( typeof a[key] == 'number' )
+						{
+							ret = sort=='DESC' ? b[key] - a[key] : a[key] - b[key];
+						}
+						return ret;
+					});
+				}
+			}
+			return arr;
+		};
+		RESULT_SET.prototype.LIMIT = function( start, end )
+		{
+			if ( ! end )
+			{
+				end		= start;
+				start	= 0;
+			}
+			return this.splice( start, end );
+		};
+		
 		/**
 		 * init() -> undefined
 		 * Initializes the DB and loads its contents in to memory
@@ -114,26 +178,45 @@ License:       MIT License (see homepage)
 		 * Finds items within the data set that match the supplied criteria
 		 * 
 		 * @param array d - the data set
-		 * @param object c - the criteria to be matched
+		 * @param mixed c - the criteria object to be matched or the criteria function
 		 */
 		function findMatches( d, c )
 		{
 			var
+			d	= clone( d ), // never let a select mutate a row
 			i	= d.length,
-			a	= [],
+			a	= new RESULT_SET(),
 			r, p;
-			rows: while ( i-- )
+			if ( c instanceof Function )
 			{
-				r = d[i];
-				for ( p in c )
+				while ( i-- )
 				{
-					if ( c.hasOwnProperty( p ) &&
-					 	 r[p] != c[p] )
+					r = c( d[i] );
+					if ( !! r )
 					{
-						continue rows;
+						a.push( d[i] );
 					}
 				}
-				a.push( r );
+			}
+			else if ( c instanceof Object )
+			{
+				rows: while ( i-- )
+				{
+					r = d[i];
+					for ( p in c )
+					{
+						if ( c.hasOwnProperty( p ) &&
+						 	 r[p] != c[p] )
+						{
+							continue rows;
+						}
+					}
+					a.push( r );
+				}
+			}
+			else if ( ! c )
+			{
+				a = d.reverse();
 			}
 			return a.reverse();
 		}
@@ -173,6 +256,14 @@ License:       MIT License (see homepage)
 		{
 			return writeToCache( table, DB[table] );
 		}
+		/**
+		 * clone( obj ) -> object
+		 * Clones a given object
+		 */
+		function clone( obj )
+		{
+			return decode( encode( obj ) );
+		}
 		
 		
 		// ------------------------
@@ -205,6 +296,15 @@ License:       MIT License (see homepage)
 		this.AFFECTED_ROWS = function()
 		{
 			return AFFECTED_ROWS;
+		};
+		
+		/**
+		 * LocalStorageDB.SHOW_TABLES() -> array
+		 * Provides an array of table names
+		 */
+		this.SHOW_TABLES = function()
+		{
+			return DB[TABLES];
 		};
 		
 		/**
@@ -392,10 +492,15 @@ License:       MIT License (see homepage)
 		 *   LocalStorageDB.SELECT( table )
 		 *   @param str table - the table to read
 		 *
-		 * Option 2: Select based on criteria
+		 * Option 2: Select based on criteria object
 		 *   LocalStorageDB.SELECT( table, criteria )
 		 *   @param str table - the table to read
 		 *   @param obj criteria - the criteria to match
+		 *
+		 * Option 3: Select based on criteria function
+		 *   LocalStorageDB.SELECT( table, criteria )
+		 *   @param str table - the table to read
+		 *   @param function criteria - the function to run against each row
 		 */
 		this.SELECT = function( table, criteria )
 		{
@@ -408,38 +513,74 @@ License:       MIT License (see homepage)
 				throw new Error( table + ' is not a valid table name' );
 			}
 		};
-
+		
+		
 		/**
-		 * LocalStorageDB.UPDATE( table, data, criteria ) -> undefined
+		 * LocalStorageDB.UPDATE( table, mutation, criteria ) -> undefined
 		 * Updates data in the table
 		 *
 		 * Option 1: Update all rows
-		 *   LocalStorageDB.UPDATE( table, data )
+		 *   LocalStorageDB.UPDATE( table, mutation )
 		 *   @param str table - the table to use
-		 *   @param obj data - the data object to use for updating the table
+		 *   @param obj mutation - the data object to use for mutating the table
 		 * 
 		 * Option 2: Update select rows
-		 *   LocalStorageDB.UPDATE( table, data, criteria )
+		 *   LocalStorageDB.UPDATE( table, mutation, criteria )
 		 *   @param str table - the table to use
-		 *   @param obj data - the data object to use for updating the table
+		 *   @param obj mutation - the data object to use for mutating the table
 		 *   @param obj criteria - the criteria to match
+		 * 
+		 * Option 3: Custom mutation
+		 *   LocalStorageDB.UPDATE( table, mutation )
+		 *   @param str table - the table to use
+		 *   @param function mutation - a function for use in mutating the table
 		 */
-		this.UPDATE = function( table, data, criteria )
+		this.UPDATE = function( table, mutation, criteria )
 		{
 			AFFECTED_ROWS = 0;
 			if ( tableExists( table ) )
 			{
-				if ( data instanceof Object )
+				if ( mutation instanceof Function )
+				{
+					var
+					i = DB[table].data.length,
+					o_data, n_data, p, changed;
+					while ( i-- )
+					{
+						changed	= false;
+						o_data	= DB[table].data[i];
+						n_data	= mutation( clone( o_data ) ); // clone before mutating
+						if ( !! n_data )
+						{
+							for ( p in o_data )
+							{
+								if ( o_data.hasOwnProperty( p ) &&
+								 	 o_data[p] != n_data[p] )
+								{
+									changed = true;
+									break;
+								}
+							}
+							if ( changed )
+							{
+								DB[table].data[i] = n_data;
+								AFFECTED_ROWS++;
+							}
+						}
+					}
+				}
+				else if ( mutation instanceof Object )
 				{
 					withMatches( DB[table].data, criteria, function( i ){
 						var 
 						newData = DB[table].data[i],
 						p;
-						for ( p in data )
+						for ( p in DB[table].dfn )
 						{
-							if ( data.hasOwnProperty( p ) )
+							if ( DB[table].dfn.hasOwnProperty( p ) &&
+								 mutation.hasOwnProperty( p ) )
 							{
-								newData[p] = data[p];
+								newData[p] = mutation[p];
 							}
 						}
 						DB[table].data[i] = newData;
@@ -448,7 +589,7 @@ License:       MIT License (see homepage)
 				}
 				else
 				{
-					throw new Error( 'LocalStorageDB.insert() expects an Object or an array of Objects to be inserted as data' );
+					throw new Error( 'LocalStorageDB.UPDATE() expects a mutation object or function as the second argument' );
 				}
 				cache( table );
 			}
