@@ -1,3 +1,11 @@
+*v0.3* (2011-11-04)
+
+* Added better garbage collection & memory management
+
+*v0.2* (2011-10-06)
+
+* Made the result sets LIMIT-able and ORDER-able (by number, string & RANDOM at least)
+
 *v0.1* (2011-10-04)
 
 * Putting a little something together

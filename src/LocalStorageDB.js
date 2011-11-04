@@ -2,12 +2,13 @@
 Function:      LocalStorageDB()
 Author:        Aaron Gustafson (aaron at easy-designs dot net)
 Creation Date: 2011-10-03
-Version:       1.0
+Version:       0.3
 Homepage:      http://github.com/easy-designs/LocalStorageDB.js
 License:       MIT License (see homepage)
 ------------------------------------------------------------------------------*/
 ;if ( 'localStorage' in window )
 {
+	
 	/**
 	 * LocalStorageDB()
 	 * a simple cross-browser DB using localStorage
@@ -21,8 +22,11 @@ License:       MIT License (see homepage)
 
 		var
 		UNDEFINED,
+		TRUE	= true,
+		FALSE	= false,
+		NULL	= null,
+		__cache,
 		WINDOW	= window,
-		__cache	= WINDOW.localStorage,
 		HYPHEN	= '-',
 		PREFIX	= 'LocalStorageDB-',
 		TABLES	= '::tables::',
@@ -99,6 +103,20 @@ License:       MIT License (see homepage)
 			return this.splice( start, end );
 		};
 		
+		
+		// for Firefox when users manually disable localStorage
+		try {
+			__cache = WINDOW.localStorage;
+		} catch (e) {
+			if ( 'console' in WINDOW )
+			{
+				console.log('localStorage is not available',e);
+			}
+			// die
+			return FALSE;
+		}
+		
+		
 		/**
 		 * init() -> undefined
 		 * Initializes the DB and loads its contents in to memory
@@ -112,17 +130,14 @@ License:       MIT License (see homepage)
 			{
 				// store for easier access
 				DB[TABLES] = tables;
-				// loop and load
-				while ( t-- )
-				{
-					DB[ tables[t] ] = readFromCache( tables[t] );
-				}
 			}
 			else
 			{
 				DB[TABLES] = [];
 				cache( TABLES );
 			}
+			// garbage collection
+			tables = NULL;
 		}
 		/**
 		 * tableExists( table ) -> boolean
@@ -141,11 +156,13 @@ License:       MIT License (see homepage)
 				{
 					if ( table == tables[t] )
 					{
-						return true;
+						return TRUE;
 					}
 				}
+				// garbage collection
+				tables = t = NULL;
 			}
-			return false;
+			return FALSE;
 		}
 		/**
 		 * insertData( table, data ) -> undefined
@@ -157,9 +174,8 @@ License:       MIT License (see homepage)
 		function insertData( table, data )
 		{
 			var
-			t	= DB[table],
-			p	= t.dfn,
-			i	= t.index++,
+			p	= DB[table].dfn,
+			i	= DB[table].index++,
 			d	= {},
 			k;
 			for ( k in p )
@@ -172,18 +188,23 @@ License:       MIT License (see homepage)
 			}
 			DB[table].data.push( d );
 			AFFECTED_ROWS++;
+			// garbage collection
+			d = data = NULL;
 		}
 		/**
-		 * findMatches( d, c ) -> array
-		 * Finds items within the data set that match the supplied criteria
+		 * findMatches( t, c ) -> array
+		 * Finds items within the table that match the supplied criteria
 		 * 
-		 * @param array d - the data set
+		 * @param array t - the table
 		 * @param mixed c - the criteria object to be matched or the criteria function
 		 */
-		function findMatches( d, c )
+		function findMatches( t, c )
 		{
+			console.log( t );
+			t	= load( t );
+			console.log( t );
 			var
-			d	= clone( d ), // never let a select mutate a row
+			d	= clone( t.data ), // never let a select mutate a row
 			i	= d.length,
 			a	= new RESULT_SET(),
 			r, p;
@@ -218,6 +239,11 @@ License:       MIT License (see homepage)
 			{
 				a = d.reverse();
 			}
+			
+			// garbage collection
+			t = d = c = NULL;
+			
+			// return
 			return a.reverse();
 		}
 		/**
@@ -247,6 +273,17 @@ License:       MIT License (see homepage)
 				// trigger the callback, supplying the index
 				f( i );
 			}
+			
+			// garbage collection
+			d = c = f = i = r = p = NULL;
+		}
+		/**
+		 * load( table ) -> boolean
+		 * Loads the supplied table name
+		 */
+		function load( table )
+		{
+			return readFromCache( table );
 		}
 		/**
 		 * cache( table ) -> boolean
@@ -328,14 +365,18 @@ License:       MIT License (see homepage)
 				 tableExists( table ) )
 			{
 				throw new Error( table + ' already exists' );
-				return false;
+				return FALSE;
 			}
 
 			// set up the table
 			DB[table]		= {};
 			DB[table].data	= [];
 			DB[table].dfn	= dfn;
-			DB[table].index	= 0;
+			DB[table].index	= 1;
+
+			// cache the table index
+			DB[TABLES].push( table );
+			cache( TABLES );
 
 			// insert the data (if asked)
 			if ( data &&
@@ -343,14 +384,20 @@ License:       MIT License (see homepage)
 				   data instanceof Object ) )
 			{
 				this.INSERT_INTO( table, data );
+				// caching and garbage collection handled elsewhere
+			}
+			else
+			{
+				// cache the table
+				cache( table );
+				// garbage collection
+				delete DB[table];
 			}
 			
-			// cache the table
-			cache( table );
-			// cache the table index
-			DB[TABLES].push( table );
-			cache( TABLES );
-			return true;
+			// garbage collection
+			dfn = data = NULL;
+			
+			return TRUE;
 		};
 
 		/**
@@ -363,7 +410,7 @@ License:       MIT License (see homepage)
 		{
 			if ( tableExists( table ) )
 			{
-				return DB[table].dfn;
+				return load( table ).dfn;
 			}
 			else
 			{
@@ -384,10 +431,13 @@ License:       MIT License (see homepage)
 			{
 				if ( tableExists( table ) )
 				{
+					DB[table] = load( table );
 					AFFECTED_ROWS = DB[table].data.length;
 					DB[table].index	= 0;
 					DB[table].data	= [];
 					cache( table );
+					// garbage collection
+					delete DB[table];
 				}
 				else
 				{
@@ -425,6 +475,8 @@ License:       MIT License (see homepage)
 					}
 					cache( TABLES );
 					removeFromCache( table );
+					// garbage collection
+					tables = NULL;
 				}
 				else
 				{
@@ -458,6 +510,10 @@ License:       MIT License (see homepage)
 			AFFECTED_ROWS = 0;
 			if ( tableExists( table ) )
 			{
+				if ( DB[table] == UNDEFINED )
+				{
+					DB[table] = load( table );
+				}
 				if ( data instanceof Array )
 				{
 					for ( var i=0, len = data.length; i < len; i++ )
@@ -477,6 +533,9 @@ License:       MIT License (see homepage)
 					throw new Error( 'LocalStorageDB.insert() expects an Object or an array of Objects to be inserted as data' );
 				}
 				cache( table );
+				// garbage collection
+				delete DB[table];
+				data = NULL;
 			}	
 			else
 			{
@@ -506,7 +565,7 @@ License:       MIT License (see homepage)
 		{
 			if ( tableExists( table ) )
 			{
-				return findMatches( DB[table].data, criteria );
+				return findMatches( table, criteria );
 			}
 			else
 			{
@@ -540,14 +599,15 @@ License:       MIT License (see homepage)
 			AFFECTED_ROWS = 0;
 			if ( tableExists( table ) )
 			{
+				DB[table] = load( table );
+				var i = DB[table].data.length,
+				o_data, n_data, p, changed;
+				
 				if ( mutation instanceof Function )
 				{
-					var
-					i = DB[table].data.length,
-					o_data, n_data, p, changed;
 					while ( i-- )
 					{
-						changed	= false;
+						changed	= FALSE;
 						o_data	= DB[table].data[i];
 						n_data	= mutation( clone( o_data ) ); // clone before mutating
 						if ( !! n_data )
@@ -557,7 +617,7 @@ License:       MIT License (see homepage)
 								if ( o_data.hasOwnProperty( p ) &&
 								 	 o_data[p] != n_data[p] )
 								{
-									changed = true;
+									changed = TRUE;
 									break;
 								}
 							}
@@ -567,14 +627,12 @@ License:       MIT License (see homepage)
 								AFFECTED_ROWS++;
 							}
 						}
-					}
+					}					
 				}
 				else if ( mutation instanceof Object )
 				{
 					withMatches( DB[table].data, criteria, function( i ){
-						var 
-						newData = DB[table].data[i],
-						p;
+						var newData = DB[table].data[i];
 						for ( p in DB[table].dfn )
 						{
 							if ( DB[table].dfn.hasOwnProperty( p ) &&
@@ -585,6 +643,8 @@ License:       MIT License (see homepage)
 						}
 						DB[table].data[i] = newData;
 						AFFECTED_ROWS++;
+						// garbage collection
+						i = newData = NULL;
 					});
 				}
 				else
@@ -592,6 +652,9 @@ License:       MIT License (see homepage)
 					throw new Error( 'LocalStorageDB.UPDATE() expects a mutation object or function as the second argument' );
 				}
 				cache( table );
+				// garbage collection
+				delete DB[table];
+				o_data = n_data = NULL;
 			}
 			else
 			{
@@ -621,11 +684,14 @@ License:       MIT License (see homepage)
 			}
 			else
 			{
+				DB[table] = load( table );
 				withMatches( DB[table].data, criteria, function( i ){
 					DB[table].data.splice(i,1);
 					AFFECTED_ROWS++;
 				});
 				cache( table );
+				// garbage collection
+				delete DB[table];
 			}
 		};
 		
@@ -635,5 +701,3 @@ License:       MIT License (see homepage)
 		init();
 	}
 }
-
-
