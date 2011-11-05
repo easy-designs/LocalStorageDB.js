@@ -200,9 +200,7 @@ License:       MIT License (see homepage)
 		 */
 		function findMatches( t, c )
 		{
-			console.log( t );
 			t	= load( t );
-			console.log( t );
 			var
 			d	= clone( t.data ), // never let a select mutate a row
 			i	= d.length,
