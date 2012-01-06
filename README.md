@@ -18,6 +18,9 @@ The API is still developing, but using LocalStorageDB is pretty simple:
 
 ## API
 
+__`version` - the library version
+
+
 __`CREATE()` - creates a new table__
 
 You can define your tables by supplying a name for the table and a object-based definition (type checking is coming…).

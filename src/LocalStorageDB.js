@@ -2,7 +2,7 @@
 Function:      LocalStorageDB()
 Author:        Aaron Gustafson (aaron at easy-designs dot net)
 Creation Date: 2011-10-03
-Version:       0.3
+Version:       0.4
 Homepage:      http://github.com/easy-designs/LocalStorageDB.js
 License:       MIT License (see homepage)
 ------------------------------------------------------------------------------*/
@@ -19,7 +19,8 @@ License:       MIT License (see homepage)
 	 */
 	function LocalStorageDB( name )
 	{
-
+		this.version = '0.4';
+		
 		var
 		UNDEFINED,
 		TRUE	= true,
@@ -388,8 +389,6 @@ License:       MIT License (see homepage)
 			{
 				// cache the table
 				cache( table );
-				// garbage collection
-				delete DB[table];
 			}
 			
 			// garbage collection
@@ -434,8 +433,6 @@ License:       MIT License (see homepage)
 					DB[table].index	= 0;
 					DB[table].data	= [];
 					cache( table );
-					// garbage collection
-					delete DB[table];
 				}
 				else
 				{
@@ -532,7 +529,6 @@ License:       MIT License (see homepage)
 				}
 				cache( table );
 				// garbage collection
-				delete DB[table];
 				data = NULL;
 			}	
 			else
@@ -651,7 +647,6 @@ License:       MIT License (see homepage)
 				}
 				cache( table );
 				// garbage collection
-				delete DB[table];
 				o_data = n_data = NULL;
 			}
 			else
@@ -688,12 +683,8 @@ License:       MIT License (see homepage)
 					AFFECTED_ROWS++;
 				});
 				cache( table );
-				// garbage collection
-				delete DB[table];
 			}
 		};
-		
-		
 		
 		// load it up!
 		init();
