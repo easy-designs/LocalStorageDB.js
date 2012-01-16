@@ -314,7 +314,15 @@ License:       MIT License (see homepage)
 		function writeToCache( table, data )
 		{
 			table = PREFIX + name + HYPHEN + table;
-			__cache.setItem( table, encode( data ) );
+			try {
+				 __cache.setItem( table, encode( data ) );
+			} catch (e) {
+				// Quota was exceeded
+				if ( 'console' in WINDOW )
+				{
+					console.log('Storage quota was exceeded :-(',e);
+				}
+			}
 			return true;
 		}
 		function removeFromCache( table )
