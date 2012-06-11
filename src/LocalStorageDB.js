@@ -103,6 +103,11 @@ License:       MIT License (see homepage)
 			}
 			return this.splice( start, end );
 		};
+		RESULT_SET.prototype.toArray = function()
+		{
+			var arr = this;
+			return Array.prototype.slice.call(arr);
+		};
 		
 		
 		// for Firefox when users manually disable localStorage
