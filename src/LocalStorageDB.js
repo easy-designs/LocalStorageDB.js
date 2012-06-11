@@ -327,7 +327,6 @@ License:       MIT License (see homepage)
 		}
 		function removeFromCache( table )
 		{
-			var
 			table = table ? PREFIX + name + HYPHEN + table : PREFIX + name;
 			__cache.removeItem( table );
 			return true;
